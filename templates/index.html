@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Violence Detection System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #0f0f1a;
+            color: #fff;
+            min-height: 100vh;
+        }
+        header {
+            background: #1a1a2e;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 2px solid #e63946;
+        }
+        header h1 { font-size: 22px; color: #fff; }
+        header span { 
+            background: #e63946; 
+            padding: 4px 12px; 
+            border-radius: 20px; 
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .camera-section { display: flex; flex-direction: column; gap: 16px; }
+        .camera-box {
+            background: #1a1a2e;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #2a2a4a;
+            position: relative;
+        }
+        #camera-feed {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+            display: block;
+            background: #0a0a15;
+        }
+        .status-bar {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #status-badge {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            background: #2a2a4a;
+            color: #888;
+        }
+        #status-badge.safe { background: #1a472a; color: #4ade80; }
+        #status-badge.violence { background: #7f1d1d; color: #f87171; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+        #confidence-bar-container {
+            background: #2a2a4a;
+            border-radius: 20px;
+            padding: 6px 16px;
+            font-size: 13px;
+            color: #aaa;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+        }
+        button {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.85; }
+        #start-btn { background: #4ade80; color: #000; }
+        #stop-btn { background: #e63946; color: #fff; }
+        .sidebar { display: flex; flex-direction: column; gap: 16px; }
+        .card {
+            background: #1a1a2e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #2a2a4a;
+        }
+        .card h3 {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #2a2a4a;
+        }
+        .stat:last-child { border-bottom: none; }
+        .stat-label { color: #aaa; font-size: 14px; }
+        .stat-value { font-weight: bold; font-size: 16px; }
+        .log-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a4a;
+            font-size: 13px;
+        }
+        .log-entry:last-child { border-bottom: none; }
+        .log-time { color: #888; }
+        .log-label { font-weight: bold; }
+        .log-label.violence { color: #f87171; }
+        .log-label.safe { color: #4ade80; }
+        .log-conf { color: #aaa; }
+        #alert-box {
+            display: none;
+            background: #7f1d1d;
+            border: 2px solid #e63946;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+        #alert-box.show { display: block; animation: pulse 1s infinite; }
+        #alert-box h3 { color: #f87171; font-size: 18px; margin-bottom: 8px; }
+        #alert-box p { color: #fca5a5; font-size: 13px; }
+        .offline-msg {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #444;
+            font-size: 16px;
+            flex-direction: column;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🔴 Violence Detection System</h1>
+        <span>LIVE</span>
+    </header>
+
+    <div class="container">
+        <div class="camera-section">
+            <div class="camera-box">
+                <div id="offline-msg" class="offline-msg">
+                    <div>📷</div>
+                    <div>Camera offline — press Start to begin</div>
+                </div>
+                <img id="camera-feed" style="display:none" />
+                <div class="status-bar">
+                    <div id="status-badge">OFFLINE</div>
+                    <div id="confidence-bar-container">Confidence: --</div>
+                </div>
+            </div>
+            <div class="controls">
+                <button id="start-btn" onclick="startCamera()">▶ Start Camera</button>
+                <button id="stop-btn" onclick="stopCamera()">⏹ Stop Camera</button>
+            </div>
+            <div id="alert-box">
+                <h3>🚨 VIOLENCE DETECTED!</h3>
+                <p id="alert-msg">Telegram alert sent!</p>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="card">
+                <h3>Live Stats</h3>
+                <div class="stat">
+                    <span class="stat-label">Status</span>
+                    <span class="stat-value" id="stat-status" style="color:#888">Offline</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Total Detections</span>
+                    <span class="stat-value" id="stat-total">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Violence Alerts</span>
+                    <span class="stat-value" id="stat-alerts" style="color:#f87171">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Last Detection</span>
+                    <span class="stat-value" id="stat-last">--</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Detection Log</h3>
+                <div id="log-container">
+                    <div style="color:#444;font-size:13px">No detections yet...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let totalDetections = 0;
+        let totalAlerts = 0;
+
+        function startCamera() {
+            fetch('/start', { method: 'POST' });
+            document.getElementById('offline-msg').style.display = 'none';
+            document.getElementById('camera-feed').style.display = 'block';
+            document.getElementById('stat-status').textContent = 'Running';
+            document.getElementById('stat-status').style.color = '#4ade80';
+            document.getElementById('status-badge').textContent = 'STARTING...';
+        }
+
+        function stopCamera() {
+            fetch('/stop', { method: 'POST' });
+            document.getElementById('offline-msg').style.display = 'flex';
+            document.getElementById('camera-feed').style.display = 'none';
+            document.getElementById('stat-status').textContent = 'Offline';
+            document.getElementById('stat-status').style.color = '#888';
+            document.getElementById('status-badge').textContent = 'OFFLINE';
+            document.getElementById('status-badge').className = '';
+        }
+
+        socket.on('detection', (data) => {
+            // Update camera feed
+            document.getElementById('camera-feed').src = 'data:image/jpeg;base64,' + data.frame;
+
+            // Update status badge
+            const badge = document.getElementById('status-badge');
+            badge.textContent = data.label;
+            badge.className = data.label === 'VIOLENCE' ? 'violence' : 'safe';
+
+            // Update confidence
+            document.getElementById('confidence-bar-container').textContent = 'Confidence: ' + data.confidence;
+
+            // Update stats
+            totalDetections++;
+            document.getElementById('stat-total').textContent = totalDetections;
+            document.getElementById('stat-last').textContent = data.log[0]?.time || '--';
+
+            // Update log
+            const logContainer = document.getElementById('log-container');
+            logContainer.innerHTML = data.log.slice(0, 10).map(entry => `
+                <div class="log-entry">
+                    <span class="log-time">${entry.time}</span>
+                    <span class="log-label ${entry.label.toLowerCase()}">${entry.label}</span>
+                    <span class="log-conf">${entry.confidence}</span>
+                </div>
+            `).join('');
+        });
+
+        socket.on('alert', (data) => {
+            totalAlerts++;
+            document.getElementById('stat-alerts').textContent = totalAlerts;
+
+            const alertBox = document.getElementById('alert-box');
+            document.getElementById('alert-msg').textContent = `Alert sent at ${data.time} — Confidence: ${data.confidence}`;
+            alertBox.classList.add('show');
+            setTimeout(() => alertBox.classList.remove('show'), 5000);
+        });
+    </script>
+</body>
+</html>
