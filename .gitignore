@@ -1,0 +1,10 @@
+venv/
+data/frames/
+data/violence/
+data/non_violence/
+__pycache__/
+*.pyc
+gradcam_output.png
+webcam_alert.png
+pipeline_output.png
+models/
